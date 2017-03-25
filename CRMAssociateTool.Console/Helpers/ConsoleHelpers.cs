@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace CrmDeployTool.Console.Helpers
+namespace CRMAssociateTool.Console.Helpers
 {
     public static class ConsoleHelpers
     {
