@@ -67,7 +67,7 @@ namespace CRMAssociateTool.Console
                 System.Console.WriteLine($"{index++}) {connectionString.Name}");
             }
 
-            if (int.TryParse(System.Console.ReadKey(true).KeyChar.ToString(), out var connectionIndex))
+            if (int.TryParse(System.Console.ReadKey(true).KeyChar.ToString(), out var connectionIndex) && connectionIndex <= index && connectionIndex > 0)
             {
                 var connectionString = ConfigurationManager.ConnectionStrings[--connectionIndex];
                 var chosenString = connectionString.ConnectionString;
@@ -88,9 +88,9 @@ namespace CRMAssociateTool.Console
                     }
                     ConsoleHelpers.WriteSuccess("Connected Succefully");
                     System.Console.WriteLine();
-                    _orgService = (IOrganizationService) crmServiceClient.OrganizationWebProxyClient ??
+                    _orgService = (IOrganizationService)crmServiceClient.OrganizationWebProxyClient ??
                                   crmServiceClient.OrganizationServiceProxy;
-                    System.Console.Title = $"Connected: {connectionString.Name}";
+                    System.Console.Title = $"CRM Bulk Association Tool - Connected: {connectionString.Name}";
 
                     ViewActions();
                 }
@@ -115,6 +115,7 @@ namespace CRMAssociateTool.Console
         private static void ViewActions()
         {
             System.Console.WriteLine("Choose Action:");
+            System.Console.WriteLine();
             System.Console.WriteLine("1) Export N:N Relationships");
             System.Console.WriteLine("2) Import N:N Relationships");
             switch (System.Console.ReadKey(true).KeyChar)
@@ -130,16 +131,38 @@ namespace CRMAssociateTool.Console
 
         private static void Startimport()
         {
+            System.Console.Clear();
+            System.Console.WriteLine("Starting Import:");
+            System.Console.WriteLine();
             System.Console.WriteLine("Enter CSV file location:");
             var pathLine = System.Console.ReadLine();
-            if (!pathLine.EndsWith("csv")) ViewActions();
+            System.Console.WriteLine();
+            if (!pathLine.EndsWith("csv") && !pathLine.EndsWith("csv\""))
+            {
+                ConsoleHelpers.WriteError("only csv files are supported.");
+                System.Console.WriteLine();
+                System.Console.WriteLine("Press any key to go back ...");
+                System.Console.ReadKey(true);
+                System.Console.Clear();
+                ViewActions();
+            }
             var csvLines = File.ReadAllLines(pathLine);
+            System.Console.WriteLine($"Found {csvLines.Length} records in file");
+            System.Console.WriteLine();
+            var index = 1;
+            var good = 0;
+            var bad = 0;
+            var badOnes = new List<int>();
             foreach (var line in csvLines)
             {
+                System.Console.WriteLine($"Processing Record {index} of {csvLines.Length}");
                 var cells = line.Split(',');
                 if (cells.Length != 5)
                 {
-                    System.Console.WriteLine("Error: Invalid Data in file");
+                    bad++;
+                    badOnes.Add(index);
+                    ConsoleHelpers.WriteError("Invalid Data in File, Skipping Record");
+                    System.Console.WriteLine();
                     continue;
                 }
                 try
@@ -149,20 +172,41 @@ namespace CRMAssociateTool.Console
                     var relatedName = cells[2];
                     var relatedId = Guid.Parse(cells[3]);
                     var relationship = cells[4];
+                    System.Console.WriteLine("Associating Record");
                     _orgService.Associate(mainName, mainId, new Relationship(relationship),
                         new EntityReferenceCollection { new EntityReference(relatedName, relatedId) });
-
+                    good++;
+                    ConsoleHelpers.WriteSuccess("Associated Succefully");
+                    System.Console.WriteLine();
                 }
                 catch (Exception exception)
                 {
-                    System.Console.WriteLine(exception);
+                    bad++;
+                    badOnes.Add(index);
+                    ConsoleHelpers.WriteError($"{exception.Message}, Skipping Record");
+                    System.Console.WriteLine();
                 }
+                index++;
             }
+            System.Console.WriteLine($"Finished - {good} Done, {bad} Skipped");
+            System.Console.Write("Skipped Records: ");
+            badOnes.ForEach(i => System.Console.Write($"{i}, "));
+            System.Console.WriteLine();
+            System.Console.WriteLine("Press any key to go back ...");
+            System.Console.ReadKey(true);
+            System.Console.Clear();
+            ViewActions();
         }
 
         private static void StartExport()
         {
-            throw new NotImplementedException();
+            System.Console.Clear();
+            ConsoleHelpers.WriteError("Not Currently Implemented");
+            System.Console.WriteLine();
+            System.Console.Write("Press any key to go back ...");
+            System.Console.ReadKey(true);
+            System.Console.Clear();
+            ViewActions();
         }
 
         private static void ViewConnections()
