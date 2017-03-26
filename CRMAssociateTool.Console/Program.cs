@@ -205,7 +205,7 @@ namespace CRMAssociateTool.Console
             System.Console.WriteLine("Press any key to go back ...");
             System.Console.ReadKey(true);
             System.Console.Clear();
-            ViewActions();
+            Initialize();
         }
 
         private static void StartExport()
