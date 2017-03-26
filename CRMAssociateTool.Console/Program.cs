@@ -1,9 +1,13 @@
 ﻿using System;
+using System.Activities.Statements;
 using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
+using System.Linq;
 using CRMAssociateTool.Console.Helpers;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Metadata;
+using Microsoft.Xrm.Sdk.Query;
 using Microsoft.Xrm.Tooling.Connector;
 
 namespace CRMAssociateTool.Console
@@ -12,6 +16,7 @@ namespace CRMAssociateTool.Console
     {
         private static IOrganizationService _orgService;
 
+        [STAThread]
         static void Main(string[] args)
         {
             Initialize();
@@ -59,6 +64,7 @@ namespace CRMAssociateTool.Console
             System.Console.WriteLine();
             System.Console.WriteLine("Choose the connection:");
             System.Console.WriteLine();
+            ConfigurationManager.RefreshSection("connectionStrings");
             if (ConfigurationManager.ConnectionStrings.Count < 1)
                 AddConnection();
             foreach (ConnectionStringSettings connectionString in ConfigurationManager.ConnectionStrings)
@@ -85,7 +91,7 @@ namespace CRMAssociateTool.Console
                         System.Console.ReadKey(true);
                         ConnectToCrm();
                     }
-                    ConsoleHelpers.WriteSuccess("Connected Succefully");
+                    ConsoleHelpers.WriteSuccess("Connected Successfully");
                     System.Console.WriteLine();
                     _orgService = (IOrganizationService)crmServiceClient.OrganizationWebProxyClient ??
                                   crmServiceClient.OrganizationServiceProxy;
@@ -117,6 +123,7 @@ namespace CRMAssociateTool.Console
             System.Console.WriteLine();
             System.Console.WriteLine("1) Export N:N Relationships");
             System.Console.WriteLine("2) Import N:N Relationships");
+            System.Console.WriteLine("3) Disconnect from CRM");
             switch (System.Console.ReadKey(true).KeyChar)
             {
                 case '1':
@@ -124,6 +131,10 @@ namespace CRMAssociateTool.Console
                     break;
                 case '2':
                     Startimport();
+                    break;
+                case '3':
+                    _orgService = null;
+                    ConnectToCrm();
                     break;
             }
         }
@@ -175,7 +186,7 @@ namespace CRMAssociateTool.Console
                     _orgService.Associate(mainName, mainId, new Relationship(relationship),
                         new EntityReferenceCollection { new EntityReference(relatedName, relatedId) });
                     good++;
-                    ConsoleHelpers.WriteSuccess("Associated Succefully");
+                    ConsoleHelpers.WriteSuccess("Associated Successfully");
                     System.Console.WriteLine();
                 }
                 catch (Exception exception)
@@ -200,12 +211,107 @@ namespace CRMAssociateTool.Console
         private static void StartExport()
         {
             System.Console.Clear();
-            ConsoleHelpers.WriteError("Not Currently Implemented");
+            System.Console.WriteLine("Starting Export:");
             System.Console.WriteLine();
-            System.Console.Write("Press any key to go back ...");
-            System.Console.ReadKey(true);
-            System.Console.Clear();
-            ViewActions();
+            System.Console.Write("Please type the main entity logical name: ");
+            var mainEntity = System.Console.ReadLine();
+            System.Console.WriteLine();
+            var filteredIds = CheckForFiltration(mainEntity);
+            System.Console.Write($"Retrieveing {mainEntity} relationships");
+            ConsoleHelpers.PlayLoadingAnimation();
+            var customRelationships = CrmHelpers.GetCustomRelationships(_orgService, mainEntity,
+                new[] { CrmHelpers.RelationType.ManyToManyRelationships });
+            ConsoleHelpers.StopLoadingAnimation();
+            ConsoleHelpers.WriteSuccess("Retrieved Relationships");
+            System.Console.WriteLine();
+            Export(customRelationships, filteredIds);
+        }
+
+        private static List<Guid> CheckForFiltration(string mainEntity)
+        {
+            System.Console.WriteLine("Add Filtration ? (Y = Yes, Any Key = No)");
+            var getFiltration = System.Console.ReadKey(true);
+            if (getFiltration.Key != ConsoleKey.Y) return null;
+            System.Console.WriteLine();
+            System.Console.WriteLine("Paste the filter part of the FetchXML:");
+            string readLine;
+            var conditionXml = "";
+            do
+            {
+                readLine = System.Console.ReadLine();
+                conditionXml += $"{readLine}\r\n";
+            } while (!string.IsNullOrWhiteSpace(readLine?.Trim().Replace("\r\n", "")));
+
+            if (Helpers.Helpers.ValidateXml(conditionXml))
+            {
+                System.Console.WriteLine();
+                System.Console.Write("Retrieving filtered Ids");
+                ConsoleHelpers.PlayLoadingAnimation();
+                var fetchxml = $"<fetch>\r\n  <entity name=\"{mainEntity}\" >\r\n {conditionXml} </entity>\r\n</fetch>";
+                var fetch = new FetchExpression(fetchxml);
+                var filteredIds = _orgService.RetrieveMultiple(fetch);
+                ConsoleHelpers.StopLoadingAnimation();
+                return filteredIds.Entities.Select(entity => entity.Id).ToList();
+            }
+            ConsoleHelpers.WriteError("Pasted Text is not valid xml");
+            System.Console.WriteLine();
+            CheckForFiltration(mainEntity);
+            return null;
+        }
+
+        public static void Export(List<RelationshipMetadataBase> customRelationships, List<Guid> filteredIds)
+        {
+            System.Console.WriteLine("Choose Relationship:");
+            var index = 1;
+            customRelationships.ForEach(relation => System.Console.WriteLine($"{index++}) {relation.SchemaName}"));
+            if (int.TryParse(System.Console.ReadKey(true).KeyChar.ToString(), out var connectionIndex) &&
+                connectionIndex <= index && connectionIndex > 0)
+            {
+                System.Console.WriteLine();
+                var relationshipMetadata = (ManyToManyRelationshipMetadata)customRelationships[--connectionIndex];
+                var relationshipName = relationshipMetadata.SchemaName;
+                var mainEntity = relationshipMetadata.Entity1LogicalName;
+                var relatedEntity = relationshipMetadata.Entity2LogicalName;
+                var query = new QueryExpression(relationshipName) { ColumnSet = new ColumnSet(true) };
+                if (filteredIds != null && filteredIds.Any())
+                    query.Criteria = new FilterExpression
+                    {
+                        Conditions = { new ConditionExpression($"{mainEntity}id", ConditionOperator.In, filteredIds) }
+                    };
+                System.Console.Write("Retrieving Relationship Records");
+                ConsoleHelpers.PlayLoadingAnimation();
+                var relationshipRecords = _orgService.RetrieveMultiple(query);
+                ConsoleHelpers.StopLoadingAnimation();
+                System.Console.WriteLine();
+                ConsoleHelpers.WriteSuccess($"Retrieved {relationshipRecords.Entities.Count} Records");
+                System.Console.WriteLine();
+                System.Console.Write("Saving to file");
+                ConsoleHelpers.PlayLoadingAnimation();
+                var relationshipsDetailed = relationshipRecords.Entities
+                    .Select(
+                        relationship =>
+                            $"{mainEntity},{relationship.Attributes[$"{mainEntity}id"]},{relatedEntity},{relationship.Attributes[$"{relatedEntity}id"]},{relationshipName}")
+                    .ToList();
+                var path = AppDomain.CurrentDomain.BaseDirectory;
+                var csvPath = $"{path}{DateTime.Now.ToFileTime()}.csv";
+                File.WriteAllLines(csvPath, relationshipsDetailed);
+                ConsoleHelpers.StopLoadingAnimation();
+                System.Console.WriteLine();
+                System.Windows.Forms.Clipboard.SetText(csvPath);
+                ConsoleHelpers.WriteSuccess("File saved, Path copied to clipboard");
+                System.Console.WriteLine();
+                System.Console.WriteLine("Press any key to go back...");
+                System.Console.ReadKey(true);
+                System.Console.Clear();
+                ViewActions();
+            }
+            else
+            {
+                System.Console.WriteLine();
+                ConsoleHelpers.WriteError("Invalid Option");
+                System.Console.WriteLine();
+                Export(customRelationships, filteredIds);
+            }
         }
 
         private static void ViewConnections()
@@ -259,7 +365,7 @@ namespace CRMAssociateTool.Console
                     System.Console.ReadKey(true);
                     AddConnection();
                 }
-                ConsoleHelpers.WriteSuccess("Connected Succefully");
+                ConsoleHelpers.WriteSuccess("Connected Successfully");
                 System.Console.WriteLine();
                 System.Console.Write("Enter a Name for this connection:  ");
                 var connectionName = System.Console.ReadLine();
