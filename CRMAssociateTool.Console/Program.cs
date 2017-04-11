@@ -224,7 +224,7 @@ namespace CRMAssociateTool.Console
             ConsoleHelpers.StopLoadingAnimation();
             ConsoleHelpers.WriteSuccess("Retrieved Relationships");
             System.Console.WriteLine();
-            Export(customRelationships, filteredIds);
+            Export(customRelationships, filteredIds, mainEntity);
         }
 
         private static List<Guid> CheckForFiltration(string mainEntity)
@@ -259,7 +259,7 @@ namespace CRMAssociateTool.Console
             return null;
         }
 
-        public static void Export(List<RelationshipMetadataBase> customRelationships, List<Guid> filteredIds)
+        public static void Export(List<RelationshipMetadataBase> customRelationships, List<Guid> filteredIds, string typedMainEntity)
         {
             System.Console.WriteLine("Choose Relationship:");
             var index = 1;
@@ -272,6 +272,8 @@ namespace CRMAssociateTool.Console
                 var relationshipName = relationshipMetadata.SchemaName;
                 var mainEntity = relationshipMetadata.Entity1LogicalName;
                 var relatedEntity = relationshipMetadata.Entity2LogicalName;
+                if (!string.Equals(mainEntity, typedMainEntity))
+                    StringHelpers.Swap(ref mainEntity, ref relatedEntity);
                 var query = new QueryExpression(relationshipName) { ColumnSet = new ColumnSet(true) };
                 if (filteredIds != null && filteredIds.Any())
                     query.Criteria = new FilterExpression
@@ -310,7 +312,7 @@ namespace CRMAssociateTool.Console
                 System.Console.WriteLine();
                 ConsoleHelpers.WriteError("Invalid Option");
                 System.Console.WriteLine();
-                Export(customRelationships, filteredIds);
+                Export(customRelationships, filteredIds, typedMainEntity);
             }
         }
 

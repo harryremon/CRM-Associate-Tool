@@ -116,6 +116,7 @@
     <Compile Include="Helpers\ConsoleHelpers.cs" />
     <Compile Include="Helpers\CrmHelpers.cs" />
     <Compile Include="Helpers\Helpers.cs" />
+    <Compile Include="Helpers\StringHelpers.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
