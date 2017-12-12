@@ -269,7 +269,8 @@ namespace CRMAssociateTool.Console
             {
                 System.Console.WriteLine();
                 var relationshipMetadata = (ManyToManyRelationshipMetadata)customRelationships[--connectionIndex];
-                var relationshipName = relationshipMetadata.SchemaName;
+                var relationshipSchemaName = relationshipMetadata.SchemaName;
+                var relationshipName = relationshipMetadata.IntersectEntityName;
                 var mainEntity = relationshipMetadata.Entity1LogicalName;
                 var relatedEntity = relationshipMetadata.Entity2LogicalName;
                 if (!string.Equals(mainEntity, typedMainEntity))
@@ -292,7 +293,7 @@ namespace CRMAssociateTool.Console
                 var relationshipsDetailed = relationshipRecords.Entities
                     .Select(
                         relationship =>
-                            $"{mainEntity},{relationship.Attributes[$"{mainEntity}id"]},{relatedEntity},{relationship.Attributes[$"{relatedEntity}id"]},{relationshipName}")
+                            $"{mainEntity},{relationship.Attributes[$"{mainEntity}id"]},{relatedEntity},{relationship.Attributes[$"{relatedEntity}id"]},{relationshipSchemaName}")
                     .ToList();
                 var path = AppDomain.CurrentDomain.BaseDirectory;
                 var csvPath = $"{path}{DateTime.Now.ToFileTime()}.csv";
@@ -351,7 +352,7 @@ namespace CRMAssociateTool.Console
             var password = ConsoleHelpers.ReadPassword();
             System.Console.WriteLine();
             var connectionString =
-                $"AuthType=AD;Url={organizationUrl}; Domain={domain}; Username={username}; Password={password}";
+                $"AuthType=IFD;Url={organizationUrl}; Domain={domain}; Username={username}; Password={password}";
             System.Console.WriteLine();
             System.Console.Write("Testing Connection ");
             ConsoleHelpers.PlayLoadingAnimation();
